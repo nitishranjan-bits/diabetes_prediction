@@ -1,0 +1,15 @@
+artifact_uri: file:///home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/diabetes_prediction/src/mlruns/587970377199533734/842d1f7058c54e1b85bb9914058c60ec/artifacts
+end_time: 1722509884161
+entry_point_name: ''
+experiment_id: '587970377199533734'
+lifecycle_stage: active
+run_id: 842d1f7058c54e1b85bb9914058c60ec
+run_name: welcoming-fowl-76
+run_uuid: 842d1f7058c54e1b85bb9914058c60ec
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1722509827794
+status: 3
+tags: []
+user_id: nitish

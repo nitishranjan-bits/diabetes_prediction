@@ -1,0 +1,15 @@
+artifact_uri: file:///home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/diabetes_prediction/src/mlruns/392747810762485977/bf4ec335711743ccbbcc5fae5ed9d053/artifacts
+end_time: 1722549598459
+entry_point_name: ''
+experiment_id: '392747810762485977'
+lifecycle_stage: active
+run_id: bf4ec335711743ccbbcc5fae5ed9d053
+run_name: gifted-crab-571
+run_uuid: bf4ec335711743ccbbcc5fae5ed9d053
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1722549595185
+status: 4
+tags: []
+user_id: nitish
