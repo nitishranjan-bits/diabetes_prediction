@@ -1,9 +1,9 @@
 {
   "best_params": {
-    "C": 0.1874631931089723,
-    "kernel": "rbf",
-    "gamma": 0.021087845897956915
+    "C": 0.0019221133220858897,
+    "penalty": "l1",
+    "solver": "saga"
   },
-  "best_value": 0.8116883116883117,
-  "n_trials": 100
+  "best_value": 0.54,
+  "n_trials": 200
 }

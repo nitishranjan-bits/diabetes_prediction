@@ -1,0 +1,15 @@
+artifact_uri: /home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/Assignment-1/diabetes_prediction/mlflow_artifacts/349940301509315547/27f77162094b4fb68e231d9ff3be647d/artifacts
+end_time: 1722947230015
+entry_point_name: ''
+experiment_id: '349940301509315547'
+lifecycle_stage: active
+run_id: 27f77162094b4fb68e231d9ff3be647d
+run_name: diabetes_SVMFactory
+run_uuid: 27f77162094b4fb68e231d9ff3be647d
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1722947210878
+status: 4
+tags: []
+user_id: nitish

@@ -498,9 +498,50 @@ class DataVersionManager:
             'Insulin': np.random.randint(0, 500, n_samples),
             'BMI': np.random.uniform(18, 50, n_samples).round(1),
             'DiabetesPedigreeFunction': np.random.uniform(0.1, 2.5, n_samples).round(3),
-            'Age': np.random.randint(21, 90, n_samples),
+            'Age': np.random.randint(21, 80, n_samples),
             'Outcome': np.random.randint(0, 2, n_samples)
         })
 
-        data.to_csv(self.full_data_path, index=False)
-        print(f"Sample data generated and saved to {self.full_data_path}")
+        return data
+
+    def append_new_data(self, new_data: pd.DataFrame):
+        existing_data = pd.read_csv(self.full_data_path)
+        updated_data = pd.concat([existing_data, new_data], ignore_index=True)
+        updated_data.to_csv(self.full_data_path, index=False)
+        print(f"Appended {len(new_data)} new samples to the dataset.")
+
+    def switch_data_version(self, version_name: str):
+        try:
+            if version_name not in self.git_repo.tags:
+                raise ValueError(f"Version {version_name} does not exist")
+
+            current_branch = self.git_repo.active_branch.name
+            self.git_repo.git.checkout(version_name)
+            self.dvc_repo.checkout()
+            print(f"Switched to DVC version: {version_name}")
+
+            # Switch back to the original branch
+            self.git_repo.git.checkout(current_branch)
+            print(f"Switched back to branch: {current_branch}")
+
+            # Update the data file to the version-specific state
+            self.dvc_repo.checkout(targets=[self.data_path], force=True)
+            print(f"Updated {self.data_path} to version {version_name}")
+
+        except GitCommandError as e:
+            print(f"Git error switching version: {e}")
+        except DvcException as e:
+            print(f"DVC error switching version: {e}")
+        except Exception as e:
+            print(f"Error switching data version: {e}")
+
+    def create_new_version(self, version_name: str):
+        try:
+            new_data = self.generate_sample_data()
+            self.append_new_data(new_data)
+            self.add_data_to_dvc()
+            self.create_data_version(version_name, GIT_BRANCH)
+            self.push_to_remote()
+            print(f"New version {version_name} created and pushed successfully.")
+        except Exception as e:
+            print(f"Error creating new version: {e}")
