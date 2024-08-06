@@ -7,3 +7,5 @@ mlflow
 dvc
 optuna
 flask
+sqlalchemy
+pyyaml

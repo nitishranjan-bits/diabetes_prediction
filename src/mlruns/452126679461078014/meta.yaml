@@ -1,6 +1,0 @@
-artifact_location: file:///home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/diabetes_prediction/src/mlruns/452126679461078014
-creation_time: 1722509935613
-experiment_id: '452126679461078014'
-last_update_time: 1722509935613
-lifecycle_stage: active
-name: Diabetes Prediction Hyperparameter Tuning

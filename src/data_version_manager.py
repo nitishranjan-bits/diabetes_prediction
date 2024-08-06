@@ -1,20 +1,309 @@
+# import os
+# import subprocess
+# import dvc.api
+# import yaml
+# from dvc.repo import Repo
+# from dvc.exceptions import DvcException
+# from git import Repo as GitRepo
+# from git.exc import GitCommandError
+# import pandas as pd
+# import numpy as np
+# from config import GIT_USERNAME, GIT_PASSWORD, PROJECT_ROOT, GIT_BRANCH
+#
+#
+# class DataVersionManager:
+#     def __init__(self, data_path: str):
+#         self.data_path = data_path
+#         self.project_root = PROJECT_ROOT
+#         self.full_data_path = os.path.join(self.project_root, data_path)
+#         self.dvc_file_path = f"{self.full_data_path}.dvc"
+#         self.git_repo = GitRepo(self.project_root)
+#         self.dvc_repo = Repo(self.project_root)
+#         self.prepare_data_path = os.path.join(self.project_root, 'src', 'prepare_data.py')
+#
+#     def init_dvc(self):
+#         try:
+#             if not os.path.exists(os.path.join(self.project_root, '.dvc')):
+#                 self.dvc_repo = Repo.init(self.project_root)
+#                 print("DVC initialized")
+#             else:
+#                 print("DVC is already initialized")
+#
+#             if os.path.exists(self.dvc_file_path):
+#                 os.remove(self.dvc_file_path)
+#                 print(f"Removed existing {self.dvc_file_path}")
+#
+#             self._create_or_update_dvc_yaml()
+#         except DvcException as e:
+#             print(f"Error initializing DVC: {e}")
+#
+#     def _create_or_update_dvc_yaml(self):
+#         dvc_yaml_path = os.path.join(self.project_root, 'dvc.yaml')
+#         dvc_config = {
+#             'stages': {
+#                 'prepare_data': {
+#                     'cmd': f'python {os.path.relpath(self.prepare_data_path, self.project_root)}',
+#                     'deps': [os.path.relpath(self.prepare_data_path, self.project_root)],
+#                     'outs': [self.data_path]
+#                 }
+#             }
+#         }
+#
+#         with open(dvc_yaml_path, 'w') as f:
+#             yaml.dump(dvc_config, f)
+#         print("Updated dvc.yaml file")
+#
+#     def add_data_to_dvc(self):
+#         try:
+#             if not os.path.exists(self.prepare_data_path):
+#                 raise FileNotFoundError(f"prepare_data.py not found: {self.prepare_data_path}")
+#
+#             self._create_or_update_dvc_yaml()
+#             subprocess.run(['dvc', 'repro'], cwd=self.project_root, check=True)
+#             print(f"Updated {self.data_path} in DVC")
+#
+#             self._update_gitignore()
+#             self._commit_changes(f"Add/Update data in DVC: {self.data_path}")
+#         except subprocess.CalledProcessError as e:
+#             print(f"Error running dvc repro: {e}")
+#         except Exception as e:
+#             print(f"Error adding data to DVC: {e}")
+#
+#     def _update_gitignore(self):
+#         gitignore_path = os.path.join(self.project_root, '.gitignore')
+#         data_path_relative = os.path.relpath(self.full_data_path, self.project_root)
+#
+#         if not os.path.exists(gitignore_path):
+#             with open(gitignore_path, 'w') as f:
+#                 f.write(f"{data_path_relative}\n")
+#         else:
+#             with open(gitignore_path, 'r+') as f:
+#                 content = f.read()
+#                 if data_path_relative not in content:
+#                     f.write(f"\n{data_path_relative}")
+#
+#         self.git_repo.index.add('.gitignore')
+#
+#     def create_data_version(self, version_name: str, feature_branch: str):
+#         try:
+#             # Fetch updates from remote
+#             self.git_repo.git.fetch()
+#
+#             # Check if the feature branch exists locally, if not create it and track the remote feature branch
+#             if feature_branch not in self.git_repo.branches:
+#                 self.git_repo.git.checkout('-b', feature_branch, f'origin/{feature_branch}')
+#             else:
+#                 # Checkout the feature branch
+#                 self.git_repo.git.checkout(feature_branch)
+#
+#             # Ensure the local feature branch is up to date with the remote feature branch
+#             self.git_repo.git.pull('origin', feature_branch)
+#             if self.dvc_repo.status():
+#                 self.dvc_repo.commit()
+#                 print("DVC changes committed")
+#             else:
+#                 print("No DVC changes to commit")
+#
+#             if self._commit_changes(f"Update data version: {version_name}"):
+#                 self.git_repo.create_tag(version_name)
+#                 print(f"Created Git tag for version: {version_name}")
+#             else:
+#                 print(f"No changes to create version: {version_name}")
+#                 return
+#
+#             try:
+#                 self.git_repo.git.push('origin', version_name, force=True)
+#                 print(f"Pushed tag {version_name} to remote")
+#             except GitCommandError as e:
+#                 print(f"Git error pushing tag {version_name}: {e}")
+#
+#         except DvcException as e:
+#             print(f"DVC error creating version: {e}")
+#         except GitCommandError as e:
+#             print(f"Git error creating version: {e}")
+#         except Exception as e:
+#             print(f"Error creating data version: {e}")
+#
+#     def _commit_changes(self, message: str):
+#         try:
+#             if self.git_repo.is_dirty(untracked_files=True):
+#                 self.git_repo.git.add(A=True)
+#                 self.git_repo.index.commit(message)
+#                 print(f"Changes committed: {message}")
+#                 return True
+#             else:
+#                 print("No changes to commit")
+#                 return False
+#         except GitCommandError as e:
+#             print(f"Git error committing changes: {e}")
+#             return False
+#
+#     def push_to_remote(self, remote_name: str = 'origin', feature_branch: str = 'feature'):
+#         try:
+#             # Fetch updates from remote
+#             self.git_repo.git.fetch(remote_name)
+#
+#             # Ensure the feature branch is checked out and up to date
+#             if feature_branch not in self.git_repo.branches:
+#                 self.git_repo.git.checkout('-b', feature_branch, f'{remote_name}/{feature_branch}')
+#             else:
+#                 self.git_repo.git.checkout(feature_branch)
+#                 self.git_repo.git.pull(remote_name, feature_branch)
+#
+#             # Check for changes to push
+#             if not self.git_repo.is_dirty() and not self.git_repo.untracked_files:
+#                 local_commits = list(self.git_repo.iter_commits(f'{remote_name}/{feature_branch}..{feature_branch}'))
+#                 if not local_commits:
+#                     print("No changes to push")
+#                     return
+#
+#             # Push Git changes to the remote feature branch
+#             remote_url = self.git_repo.remotes[remote_name].url
+#             if not remote_url.startswith('https://'):
+#                 remote_url = f'https://github.com/{GIT_USERNAME}/your-repo.git'
+#             self.git_repo.git.push(f'https://{GIT_USERNAME}:{GIT_PASSWORD}@{remote_url[8:]}', feature_branch)
+#             print("Git changes pushed successfully")
+#
+#             # Push DVC changes
+#             dvc_remote = input("Enter DVC remote name (default 'origin'): ") or 'origin'
+#             if self.dvc_repo.status():
+#                 self.dvc_repo.push(remote=dvc_remote)
+#                 print("DVC data pushed successfully")
+#             else:
+#                 print("No DVC data changes to push")
+#         except GitCommandError as e:
+#             print(f"Git error pushing changes: {e}")
+#         except DvcException as e:
+#             print(f"DVC error pushing data: {e}")
+#         except Exception as e:
+#             print(f"Error pushing changes: {e}")
+#
+#     # def push_to_remote(self, remote_name: str = 'origin'):
+#     #     try:
+#     #         if not self.git_repo.is_dirty() and not self.git_repo.untracked_files:
+#     #             local_commits = list(self.git_repo.iter_commits('origin/master..master'))
+#     #             if not local_commits:
+#     #                 print("No changes to push")
+#     #                 return
+#     #
+#     #         remote_url = self.git_repo.remotes[remote_name].url
+#     #         if not remote_url.startswith('https://'):
+#     #             remote_url = f'https://github.com/{GIT_USERNAME}/your-repo.git'
+#     #         self.git_repo.git.push(f'https://{GIT_USERNAME}:{GIT_PASSWORD}@{remote_url[8:]}', 'master')
+#     #         print("Git changes pushed successfully")
+#     #
+#     #         dvc_remote = input("Enter DVC remote name (default 'origin'): ") or 'origin'
+#     #         if self.dvc_repo.status():
+#     #             self.dvc_repo.push(remote=dvc_remote)
+#     #             print("DVC data pushed successfully")
+#     #         else:
+#     #             print("No DVC data changes to push")
+#     #     except GitCommandError as e:
+#     #         print(f"Git error pushing changes: {e}")
+#     #     except DvcException as e:
+#     #         print(f"DVC error pushing data: {e}")
+#     #     except Exception as e:
+#     #         print(f"Error pushing changes: {e}")
+#
+#     def pull_from_remote(self, remote_name: str = 'origin'):
+#         try:
+#             remote_url = self.git_repo.remotes[remote_name].url
+#             if not remote_url.startswith('https://'):
+#                 remote_url = f'https://github.com/{GIT_USERNAME}/your-repo.git'
+#             self.git_repo.git.pull(f'https://{GIT_USERNAME}:{GIT_PASSWORD}@{remote_url[8:]}', 'master')
+#             print("Git changes pulled successfully")
+#
+#             dvc_remote = input("Enter DVC remote name (default 'origin'): ") or 'origin'
+#             self.dvc_repo.pull(remote=dvc_remote)
+#             print("DVC data pulled successfully")
+#         except GitCommandError as e:
+#             print(f"Git error pulling changes: {e}")
+#         except DvcException as e:
+#             print(f"DVC error pulling data: {e}")
+#         except Exception as e:
+#             print(f"Error pulling changes: {e}")
+#
+#     def generate_sample_data(self, n_samples: int = 500):
+#         columns = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI',
+#                    'DiabetesPedigreeFunction', 'Age', 'Outcome']
+#
+#         data = pd.DataFrame({
+#             'Pregnancies': np.random.randint(0, 17, n_samples),
+#             'Glucose': np.random.randint(70, 200, n_samples),
+#             'BloodPressure': np.random.randint(40, 120, n_samples),
+#             'SkinThickness': np.random.randint(0, 60, n_samples),
+#             'Insulin': np.random.randint(0, 500, n_samples),
+#             'BMI': np.random.uniform(18, 50, n_samples).round(1),
+#             'DiabetesPedigreeFunction': np.random.uniform(0.1, 2.5, n_samples).round(3),
+#             'Age': np.random.randint(21, 80, n_samples),
+#             'Outcome': np.random.randint(0, 2, n_samples)
+#         })
+#
+#         return data
+#
+#     def append_new_data(self, new_data: pd.DataFrame):
+#         existing_data = pd.read_csv(self.full_data_path)
+#         updated_data = pd.concat([existing_data, new_data], ignore_index=True)
+#         updated_data.to_csv(self.full_data_path, index=False)
+#         print(f"Appended {len(new_data)} new samples to the dataset.")
+#
+#     def switch_data_version(self, version_name: str):
+#         try:
+#             if version_name not in self.git_repo.tags:
+#                 raise ValueError(f"Version {version_name} does not exist")
+#
+#             current_branch = self.git_repo.active_branch.name
+#             self.git_repo.git.checkout(version_name)
+#             self.dvc_repo.checkout()
+#             print(f"Switched to DVC version: {version_name}")
+#
+#             self.git_repo.git.checkout(current_branch)
+#             print(f"Switched back to branch: {current_branch}")
+#
+#             self.dvc_repo.checkout(targets=[self.data_path], force=True)
+#             print(f"Updated {self.data_path} to version {version_name}")
+#
+#         except GitCommandError as e:
+#             print(f"Git error switching version: {e}")
+#         except DvcException as e:
+#             print(f"DVC error switching version: {e}")
+#         except Exception as e:
+#             print(f"Error switching data version: {e}")
+#
+#     def create_new_version(self, version_name: str):
+#         try:
+#             new_data = self.generate_sample_data()
+#             self.append_new_data(new_data)
+#             self.add_data_to_dvc()
+#             self.create_data_version(version_name, GIT_BRANCH)
+#             self.push_to_remote()
+#             print(f"New version {version_name} created and pushed successfully.")
+#         except Exception as e:
+#             print(f"Error creating new version: {e}")
+
+
 import os
 import subprocess
 import dvc.api
+import yaml
 from dvc.repo import Repo
 from dvc.exceptions import DvcException
 from git import Repo as GitRepo
 from git.exc import GitCommandError
-import getpass
+import pandas as pd
+import numpy as np
+from config import PROJECT_ROOT, GIT_BRANCH
+
 
 class DataVersionManager:
     def __init__(self, data_path: str):
         self.data_path = data_path
-        self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        self.project_root = PROJECT_ROOT
         self.full_data_path = os.path.join(self.project_root, data_path)
         self.dvc_file_path = f"{self.full_data_path}.dvc"
         self.git_repo = GitRepo(self.project_root)
         self.dvc_repo = Repo(self.project_root)
+        self.prepare_data_path = os.path.join(self.project_root, 'src', 'prepare_data.py')
 
     def init_dvc(self):
         try:
@@ -23,58 +312,46 @@ class DataVersionManager:
                 print("DVC initialized")
             else:
                 print("DVC is already initialized")
+
+            if os.path.exists(self.dvc_file_path):
+                os.remove(self.dvc_file_path)
+                print(f"Removed existing {self.dvc_file_path}")
+
+            self._create_or_update_dvc_yaml()
         except DvcException as e:
             print(f"Error initializing DVC: {e}")
 
+    def _create_or_update_dvc_yaml(self):
+        dvc_yaml_path = os.path.join(self.project_root, 'dvc.yaml')
+        dvc_config = {
+            'stages': {
+                'prepare_data': {
+                    'cmd': f'python {os.path.relpath(self.prepare_data_path, self.project_root)}',
+                    'deps': [os.path.relpath(self.prepare_data_path, self.project_root)],
+                    'outs': [self.data_path]
+                }
+            }
+        }
+
+        with open(dvc_yaml_path, 'w') as f:
+            yaml.dump(dvc_config, f)
+        print("Updated dvc.yaml file")
+
     def add_data_to_dvc(self):
         try:
-            if not os.path.exists(self.full_data_path):
-                raise FileNotFoundError(f"Data file not found: {self.full_data_path}")
+            if not os.path.exists(self.prepare_data_path):
+                raise FileNotFoundError(f"prepare_data.py not found: {self.prepare_data_path}")
 
-            if os.path.exists(self.dvc_file_path):
-                print(f"DVC file already exists for {self.data_path}. Checking for changes...")
-                status = self.dvc_repo.status([self.data_path])
-                if status.get(self.data_path, {}).get('changed'):
-                    self.dvc_repo.add(self.data_path)
-                    print(f"Updated {self.data_path} in DVC")
-                else:
-                    print(f"No changes detected in {self.data_path}")
-            else:
-                self.dvc_repo.add(self.data_path)
-                print(f"Added {self.data_path} to DVC")
+            self._create_or_update_dvc_yaml()
+            subprocess.run(['dvc', 'repro'], cwd=self.project_root, check=True)
+            print(f"Updated {self.data_path} in DVC")
 
             self._update_gitignore()
             self._commit_changes(f"Add/Update data in DVC: {self.data_path}")
-        except DvcException as e:
-            print(f"DVC error adding data: {e}")
-        except GitCommandError as e:
-            print(f"Git error adding data: {e}")
+        except subprocess.CalledProcessError as e:
+            print(f"Error running dvc repro: {e}")
         except Exception as e:
             print(f"Error adding data to DVC: {e}")
-    # def add_data_to_dvc(self):
-    #     try:
-    #         if not os.path.exists(self.full_data_path):
-    #             raise FileNotFoundError(f"Data file not found: {self.full_data_path}")
-    #
-    #         if os.path.exists(self.dvc_file_path):
-    #             print(f"DVC file already exists for {self.data_path}. Checking for changes...")
-    #             if self.dvc_repo.status([self.data_path])[self.data_path].get('changed'):
-    #                 self.dvc_repo.add(self.data_path)
-    #                 print(f"Updated {self.data_path} in DVC")
-    #             else:
-    #                 print(f"No changes detected in {self.data_path}")
-    #         else:
-    #             self.dvc_repo.add(self.data_path)
-    #             print(f"Added {self.data_path} to DVC")
-    #
-    #         self._update_gitignore()
-    #         self._commit_changes(f"Add/Update data in DVC: {self.data_path}")
-    #     except DvcException as e:
-    #         print(f"DVC error adding data: {e}")
-    #     except GitCommandError as e:
-    #         print(f"Git error adding data: {e}")
-    #     except Exception as e:
-    #         print(f"Error adding data to DVC: {e}")
 
     def _update_gitignore(self):
         gitignore_path = os.path.join(self.project_root, '.gitignore')
@@ -91,8 +368,20 @@ class DataVersionManager:
 
         self.git_repo.index.add('.gitignore')
 
-    def create_data_version(self, version_name: str):
+    def create_data_version(self, version_name: str, feature_branch: str):
         try:
+            # Fetch updates from remote
+            self.git_repo.git.fetch()
+
+            # Check if the feature branch exists locally, if not create it and track the remote feature branch
+            if feature_branch not in self.git_repo.branches:
+                self.git_repo.git.checkout('-b', feature_branch, f'origin/{feature_branch}')
+            else:
+                # Checkout the feature branch
+                self.git_repo.git.checkout(feature_branch)
+
+            # Ensure the local feature branch is up to date with the remote feature branch
+            self.git_repo.git.pull('origin', feature_branch)
             if self.dvc_repo.status():
                 self.dvc_repo.commit()
                 print("DVC changes committed")
@@ -101,35 +390,23 @@ class DataVersionManager:
 
             if self._commit_changes(f"Update data version: {version_name}"):
                 self.git_repo.create_tag(version_name)
-                print(f"Created DVC version: {version_name}")
+                print(f"Created Git tag for version: {version_name}")
             else:
                 print(f"No changes to create version: {version_name}")
+                return
+
+            try:
+                self.git_repo.git.push('origin', version_name, force=True)
+                print(f"Pushed tag {version_name} to remote")
+            except GitCommandError as e:
+                print(f"Git error pushing tag {version_name}: {e}")
+
         except DvcException as e:
             print(f"DVC error creating version: {e}")
         except GitCommandError as e:
             print(f"Git error creating version: {e}")
         except Exception as e:
             print(f"Error creating data version: {e}")
-
-    def switch_data_version(self, version_name: str):
-        try:
-            if version_name not in self.git_repo.tags:
-                raise ValueError(f"Version {version_name} does not exist")
-
-            current_branch = self.git_repo.active_branch.name
-            self.git_repo.git.checkout(version_name)
-            self.dvc_repo.checkout()
-            print(f"Switched to DVC version: {version_name}")
-
-            # Switch back to the original branch
-            self.git_repo.git.checkout(current_branch)
-            print(f"Switched back to branch: {current_branch}")
-        except GitCommandError as e:
-            print(f"Git error switching version: {e}")
-        except DvcException as e:
-            print(f"DVC error switching version: {e}")
-        except Exception as e:
-            print(f"Error switching data version: {e}")
 
     def _commit_changes(self, message: str):
         try:
@@ -145,25 +422,36 @@ class DataVersionManager:
             print(f"Git error committing changes: {e}")
             return False
 
-    def push_to_remote(self, remote_name: str = 'origin'):
+    def push_to_remote(self, remote_name: str = 'origin', feature_branch: str = 'feature'):
+        git_username = input("Enter Git username: ")
+        git_password = input("Enter Git password: ")
+
         try:
-            # Check if there are changes to push
+            # Fetch updates from remote
+            self.git_repo.git.fetch(remote_name)
+
+            # Ensure the feature branch is checked out and up to date
+            if feature_branch not in self.git_repo.branches:
+                self.git_repo.git.checkout('-b', feature_branch, f'{remote_name}/{feature_branch}')
+            else:
+                self.git_repo.git.checkout(feature_branch)
+                self.git_repo.git.pull(remote_name, feature_branch)
+
+            # Check for changes to push
             if not self.git_repo.is_dirty() and not self.git_repo.untracked_files:
-                local_commits = list(self.git_repo.iter_commits('origin/master..master'))
+                local_commits = list(self.git_repo.iter_commits(f'{remote_name}/{feature_branch}..{feature_branch}'))
                 if not local_commits:
                     print("No changes to push")
                     return
 
-            # Push Git changes
-            username = input("Enter Git username: ")
-            password = getpass.getpass("Enter Git password: ")
+            # Push Git changes to the remote feature branch
             remote_url = self.git_repo.remotes[remote_name].url
             if not remote_url.startswith('https://'):
-                remote_url = f'https://github.com/{username}/your-repo.git'
-            self.git_repo.git.push(f'https://{username}:{password}@{remote_url[8:]}', 'master')
+                remote_url = f'https://github.com/{git_username}/your-repo.git'
+            self.git_repo.git.push(f'https://{git_username}:{git_password}@{remote_url[8:]}', feature_branch)
             print("Git changes pushed successfully")
 
-            # Push DVC data
+            # Push DVC changes
             dvc_remote = input("Enter DVC remote name (default 'origin'): ") or 'origin'
             if self.dvc_repo.status():
                 self.dvc_repo.push(remote=dvc_remote)
@@ -178,17 +466,16 @@ class DataVersionManager:
             print(f"Error pushing changes: {e}")
 
     def pull_from_remote(self, remote_name: str = 'origin'):
+        git_username = input("Enter Git username: ")
+        git_password = input("Enter Git password: ")
+
         try:
-            # Pull Git changes
-            username = input("Enter Git username: ")
-            password = getpass.getpass("Enter Git password: ")
             remote_url = self.git_repo.remotes[remote_name].url
             if not remote_url.startswith('https://'):
-                remote_url = f'https://github.com/{username}/your-repo.git'
-            self.git_repo.git.pull(f'https://{username}:{password}@{remote_url[8:]}', 'master')
+                remote_url = f'https://github.com/{git_username}/your-repo.git'
+            self.git_repo.git.pull(f'https://{git_username}:{git_password}@{remote_url[8:]}', 'master')
             print("Git changes pulled successfully")
 
-            # Pull DVC data
             dvc_remote = input("Enter DVC remote name (default 'origin'): ") or 'origin'
             self.dvc_repo.pull(remote=dvc_remote)
             print("DVC data pulled successfully")
@@ -198,146 +485,22 @@ class DataVersionManager:
             print(f"DVC error pulling data: {e}")
         except Exception as e:
             print(f"Error pulling changes: {e}")
-# import os
-# import subprocess
-#
-#
-# class DataVersionManager:
-#     def __init__(self, data_path: str):
-#         self.data_path = data_path
-#         # Adjust the project root path to ensure it points to the directory containing .dvc
-#         self.project_root = os.path.abspath(os.path.join(os.getcwd(), '..'))
-#
-#     def init_dvc(self):
-#         # Change to project root to run DVC commands
-#         os.chdir(self.project_root)
-#         if not os.path.isdir(".dvc"):
-#             try:
-#                 subprocess.run(["dvc", "init"], check=True, stderr=subprocess.PIPE)
-#                 print("DVC initialized")
-#             except subprocess.CalledProcessError as e:
-#                 print(f"Error: {e.stderr.decode()}")
-#                 raise
-#         else:
-#             print(".dvc already exists. Skipping initialization.")
-#
-#     def add_data_to_dvc(self):
-#         abs_data_path = os.path.abspath(self.data_path)
-#         relative_data_path = os.path.relpath(abs_data_path, start=self.project_root)
-#
-#         if not os.path.isfile(abs_data_path):
-#             raise FileNotFoundError(f"The file {abs_data_path} does not exist.")
-#
-#         try:
-#             # Change to project root to run DVC commands
-#             os.chdir(self.project_root)
-#
-#             # Run DVC add command
-#             result = subprocess.run(["dvc", "add", relative_data_path], check=True, stdout=subprocess.PIPE,
-#                                     stderr=subprocess.PIPE)
-#             print(result.stdout.decode())
-#
-#             # Run Git add command
-#             result = subprocess.run(["git", "add", f"{relative_data_path}.dvc"], check=True, stdout=subprocess.PIPE,
-#                                     stderr=subprocess.PIPE)
-#             print(result.stdout.decode())
-#
-#             # Check if .gitignore exists before trying to add it
-#             gitignore_path = os.path.join(self.project_root, ".gitignore")
-#             if os.path.isfile(gitignore_path):
-#                 result = subprocess.run(["git", "add", ".gitignore"], check=True, stdout=subprocess.PIPE,
-#                                         stderr=subprocess.PIPE)
-#                 print(result.stdout.decode())
-#             else:
-#                 print(".gitignore does not exist. Skipping.")
-#
-#             # Check if there are any changes to commit
-#             result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-#             if result.stdout.strip():
-#                 # Commit changes
-#                 result = subprocess.run(["git", "commit", "-m", f"Add {relative_data_path} to DVC"], check=True,
-#                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-#                 print(result.stdout.decode())
-#                 print("Committed changes successfully.")
-#             else:
-#                 print("No changes to commit.")
-#         except subprocess.CalledProcessError as e:
-#             print(f"Error while adding data to DVC: {e.stderr.decode()}")
-#             print(f"Output: {e.output.decode()}")
-#         except Exception as e:
-#             print(f"An unexpected error occurred: {str(e)}")
-#
-#     # def add_data_to_dvc(self):
-#     #     abs_data_path = os.path.abspath(self.data_path)
-#     #     relative_data_path = os.path.relpath(abs_data_path, start=self.project_root)
-#     #
-#     #     if not os.path.isfile(abs_data_path):
-#     #         raise FileNotFoundError(f"The file {abs_data_path} does not exist.")
-#     #
-#     #     try:
-#     #         # Change to project root to run DVC commands
-#     #         os.chdir(self.project_root)
-#     #         subprocess.run(["dvc", "add", relative_data_path], check=True, stderr=subprocess.PIPE)
-#     #         subprocess.run(["git", "add", f"{relative_data_path}.dvc"], check=True, stderr=subprocess.PIPE)
-#     #
-#     #         # Check if .gitignore exists before trying to add it
-#     #         gitignore_path = os.path.join(self.project_root, ".gitignore")
-#     #         if os.path.isfile(gitignore_path):
-#     #             subprocess.run(["git", "add", ".gitignore"], check=True, stderr=subprocess.PIPE)
-#     #         else:
-#     #             print(".gitignore does not exist. Skipping.")
-#     #
-#     #         # Check if there are any changes to commit
-#     #         result = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True)
-#     #         if result.stdout.strip():
-#     #             # Commit changes
-#     #             subprocess.run(["git", "commit", "-m", f"Add {relative_data_path} to DVC"], check=True,
-#     #                            stderr=subprocess.PIPE)
-#     #             print(f"Added {relative_data_path} to DVC and committed changes.")
-#     #         else:
-#     #             print("No changes to commit.")
-#     #     except subprocess.CalledProcessError as e:
-#     #         print(f"Error while adding data to DVC: {e.stderr.decode()}")
-#
-#     # def create_data_version(self, version_name: str):
-#     #     try:
-#     #         os.chdir(self.project_root)
-#     #         # Commit any changes to DVC files
-#     #         subprocess.run(["git", "add", ".dvc"], check=True, stderr=subprocess.PIPE)
-#     #         subprocess.run(["git", "commit", "-m", f"Create data version {version_name}"], check=True, stderr=subprocess.PIPE)
-#     #         # Tag the commit with the version name
-#     #         subprocess.run(["git", "tag", version_name], check=True, stderr=subprocess.PIPE)
-#     #         print(f"Created Git tag: {version_name}")
-#     #     except subprocess.CalledProcessError as e:
-#     #         print(f"Error while creating data version: {e.stderr.decode()}")
-#
-#     def create_data_version(self, version_name: str):
-#         try:
-#             os.chdir(self.project_root)
-#
-#             # Stage changes related to DVC files
-#             result = subprocess.run(["git", "add", ".dvc"], check=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-#             print(f"Staged changes: {result.stdout.decode()}")
-#
-#             # Commit changes with a message
-#             result = subprocess.run(["git", "commit", "-m", f"Create data version {version_name}"], check=True,
-#                                     stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-#             print(f"Commit output: {result.stdout.decode()}")
-#
-#             # Tag the commit with the version name
-#             result = subprocess.run(["git", "tag", version_name], check=True, stderr=subprocess.PIPE,
-#                                     stdout=subprocess.PIPE)
-#             print(f"Created Git tag: {version_name}")
-#             print(f"Tag output: {result.stdout.decode()}")
-#
-#         except subprocess.CalledProcessError as e:
-#             print(f"Error while creating data version: {e.stderr.decode()}")
-#
-#     def switch_data_version(self, version_name: str):
-#         try:
-#             os.chdir(self.project_root)
-#             subprocess.run(["git", "checkout", version_name], check=True, stderr=subprocess.PIPE)
-#             subprocess.run(["dvc", "checkout"], check=True, stderr=subprocess.PIPE)
-#             print(f"Switched to version: {version_name}")
-#         except subprocess.CalledProcessError as e:
-#             print(f"Error while switching data version: {e.stderr.decode()}")
+
+    def generate_sample_data(self, n_samples: int = 500):
+        columns = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI',
+                   'DiabetesPedigreeFunction', 'Age', 'Outcome']
+
+        data = pd.DataFrame({
+            'Pregnancies': np.random.randint(0, 17, n_samples),
+            'Glucose': np.random.randint(70, 200, n_samples),
+            'BloodPressure': np.random.randint(40, 120, n_samples),
+            'SkinThickness': np.random.randint(0, 60, n_samples),
+            'Insulin': np.random.randint(0, 500, n_samples),
+            'BMI': np.random.uniform(18, 50, n_samples).round(1),
+            'DiabetesPedigreeFunction': np.random.uniform(0.1, 2.5, n_samples).round(3),
+            'Age': np.random.randint(21, 90, n_samples),
+            'Outcome': np.random.randint(0, 2, n_samples)
+        })
+
+        data.to_csv(self.full_data_path, index=False)
+        print(f"Sample data generated and saved to {self.full_data_path}")

@@ -1,121 +1,95 @@
-# mlops_pipeline.py
-
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-import mlflow
-import mlflow.sklearn
-import optuna
-import dvc.api
-from abc import ABC, abstractmethod
-import subprocess
-import os
 import json
-import datetime
-from typing import Dict, Any, List
+import os
+from typing import Dict, Any
+
+import mlflow
+import optuna
+import pandas as pd
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.model_selection import train_test_split
+
+from config import MLFLOW_TRACKING_URI, PROJECT_ROOT, MODEL_REGISTRY_URI, MLFLOW_EXPERIMENT_NAME
 from data_version_manager import DataVersionManager
 from feature_engineering import StandardScalingStrategy, FeatureEngineeringStrategy
-from model_factories import RandomForestFactory, LogisticRegressionFactory, SVMFactory, ModelFactory
 from feature_store import FeatureStore
-from model_registry import ModelRegistry
+from model_factories import RandomForestFactory, LogisticRegressionFactory, SVMFactory, ModelFactory
 
 try:
     from optuna.integration import SklearnPruningCallback
+
     pruning_callback_available = True
 except ImportError:
     print("Warning: SklearnPruningCallback is not available. Pruning will be disabled.")
     pruning_callback_available = False
 
-# MLOps Pipeline
+import logging
+
+from src.model_registry import ModelRegistry
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
 class MLOpsPipeline:
-    def __init__(self, data_path: str, model_factory: ModelFactory, feature_engineering_strategy: FeatureEngineeringStrategy):
+    def __init__(self, data_path: str, model_factory: ModelFactory,
+                 feature_engineering_strategy: FeatureEngineeringStrategy):
         self.data_path = data_path
         self.model_factory = model_factory
         self.feature_engineering_strategy = feature_engineering_strategy
         self.feature_store = FeatureStore()
         self.model_registry = ModelRegistry()
         self.data_version_manager = DataVersionManager(data_path)
-        self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        self.project_root = PROJECT_ROOT
         self.n_features = None
+        self.logger = logging.getLogger(self.__class__.__name__)
+
+        # mlflow.set_tracking_uri("http://localhost:5000")
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        mlflow.set_registry_uri(MODEL_REGISTRY_URI)
+        mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+        # self.mlflow_client = mlflow.tracking.MlflowClient()
 
     def load_data(self) -> pd.DataFrame:
         data_path = os.path.join(self.project_root, self.data_path)
         if not os.path.exists(data_path):
             raise FileNotFoundError(f"Data file not found: {data_path}")
         return pd.read_csv(data_path)
-        # data_path = self.project_root + "/data/diabetes.csv"
-        # df = pd.read_csv(data_path)
-        # return df
-
-    # def load_data(self) -> pd.DataFrame:
-    #     try:
-    #         # Attempt to open the file with DVC
-    #         with dvc.api.open(self.data_path, mode='r') as f:
-    #             df = pd.read_csv(f)
-    #         return df
-    #     except dvc.exceptions.PathMissingError:
-    #         print(f"Error: The path '{self.data_path}' does not exist in the DVC repository.")
-    #         raise
-    #     except dvc.exceptions.FileMissingError as e:
-    #         print(f"Error: {str(e)}")
-    #         raise
-    #     except Exception as e:
-    #         print(f"Unexpected error: {str(e)}")
-    #         raise
 
     def preprocess_data(self, df: pd.DataFrame):
-        X = df.drop('Outcome', axis=1)
+        feature_names = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI',
+                         'DiabetesPedigreeFunction', 'Age']
+        X = df[feature_names]
         y = df['Outcome']
+
+        # Store important features in the feature store
+        self.feature_store.add_offline_feature('raw_features', X)
+        self.feature_store.add_offline_feature('target', y)
+
         X_engineered = self.feature_engineering_strategy.engineer_features(X)
         self.feature_store.add_offline_feature('engineered_features', X_engineered)
-        self.n_features = X_engineered.shape[1]
+
         return train_test_split(X_engineered, y, test_size=0.2, random_state=42)
 
     def optimize_hyperparameters(self, X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame,
                                  y_test: pd.Series):
         def objective(trial):
+            X_train_subset, _, y_train_subset, _ = train_test_split(X_train, y_train, test_size=0.1, random_state=42)
+
             try:
-                if isinstance(self.model_factory, RandomForestFactory):
-                    params = {
-                        'n_estimators': trial.suggest_int('n_estimators', 10, 200),
-                        'max_depth': trial.suggest_int('max_depth', 2, 32, log=True),
-                        'min_samples_split': trial.suggest_int('min_samples_split', 2, 10),
-                        'min_samples_leaf': trial.suggest_int('min_samples_leaf', 1, 10)
-                    }
-                elif isinstance(self.model_factory, LogisticRegressionFactory):
-                    params = {
-                        'C': trial.suggest_float('C', 1e-5, 1e5),
-                        'penalty': trial.suggest_categorical('penalty', ['l1', 'l2']),
-                        'solver': trial.suggest_categorical('solver', ['liblinear', 'saga'])
-                    }
-                elif isinstance(self.model_factory, SVMFactory):
-                    params = {
-                        'C': trial.suggest_float('C', 1e-5, 1e3, log=True),  # Limited range
-                        'kernel': trial.suggest_categorical('kernel', ['rbf', 'linear', 'poly']),
-                        'gamma': trial.suggest_float('gamma', 1e-5, 1e3, log=True)  # Limited range
-                    }
-
+                params = self.model_factory.get_hyperparameter_space(trial)
                 model = self.model_factory.create_model(params)
-
                 if pruning_callback_available:
                     pruning_callback = SklearnPruningCallback(trial, "accuracy")
-                    model.fit(X_train, y_train, callbacks=[pruning_callback])
+                    model.fit(X_train_subset, y_train_subset, callbacks=[pruning_callback])
                 else:
-                    model.fit(X_train, y_train)
+                    model.fit(X_train_subset, y_train_subset)
 
-                y_pred = model.predict(X_test)
-                return accuracy_score(y_test, y_pred)
+                return model.score(X_test, y_test)
             except Exception as e:
                 print(f"Trial failed with params: {trial.params}, error: {str(e)}")
-                return 0.0  # Return a low score to indicate failure
+                return 0.0
 
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=100, timeout=600)
+        study.optimize(objective, n_trials=200, timeout=600)
 
         tuning_results = {
             'best_params': study.best_params,
@@ -143,100 +117,129 @@ class MLOpsPipeline:
         }
 
     def run(self, data_version: str = None):
-        if data_version:
-            self.data_version_manager.switch_data_version(data_version)
+        try:
+            if data_version:
+                try:
+                    self.data_version_manager.switch_data_version(data_version)
+                except ValueError as e:
+                    self.logger.error(f"Data version error: {str(e)}")
+                    return
 
-            # Pull latest changes before running the pipeline
-        # self.data_version_manager.pull_from_remote()
+            # with mlflow.start_run(run_name=f"diabetes_{type(self.model_factory).__name__}") as run:
+            with mlflow.start_run(run_name=f"diabetes_{type(self.model_factory).__name__}") as run:
+                run_id = run.info.run_id
 
-        mlflow.set_experiment("MLOps Pipeline")
+                mlflow.log_param("data_version", data_version if data_version else "latest")
+                mlflow.log_param("model_type", type(self.model_factory).__name__)
 
-        with mlflow.start_run():
-            mlflow.log_param("data_version", data_version if data_version else "latest")
+                df = self.load_data()
+                X_train, X_test, y_train, y_test = self.preprocess_data(df)
 
-            df = self.load_data()
-            X_train, X_test, y_train, y_test = self.preprocess_data(df)
+                if isinstance(self.model_factory, SVMFactory):
+                    X_train, y_train = self.model_factory.preprocess_data(X_train, y_train)
+                    X_test, y_test = self.model_factory.preprocess_data(X_test, y_test)
 
-            best_params = self.optimize_hyperparameters(X_train, y_train, X_test, y_test)
-            mlflow.log_params(best_params)
+                best_params = self.optimize_hyperparameters(X_train, y_train, X_test, y_test)
+                mlflow.log_params(best_params)
 
-            model = self.train_model(X_train, y_train, best_params)
+                model = self.train_model(X_train, y_train, best_params)
 
-            metrics = self.evaluate_model(model, X_test, y_test)
-            for metric_name, metric_value in metrics.items():
-                mlflow.log_metric(metric_name, metric_value)
+                metrics = self.evaluate_model(model, X_test, y_test)
+                for metric_name, metric_value in metrics.items():
+                    mlflow.log_metric(metric_name, metric_value)
 
-            model_path = "models/model_" + datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            mlflow.sklearn.save_model(model, model_path)
+                # model_name = f"diabetes_{type(model).__name__.lower()}"
+                model_name = f"diabetes_{type(self.model_factory).__name__}"
+                description = f"Diabetes prediction model trained on data version {data_version} with best parameters: {best_params}"
+                tags = {
+                    "data_version": data_version if data_version else "latest",
+                    "accuracy": f"{metrics['accuracy']:.4f}",
+                    "f1_score": f"{metrics['f1']:.4f}",
+                    "model_type": type(model).__name__,
+                    "model_name": model_name,
+                    "model_uri": f"runs:/{run_id}/{model_name}"
+                }
 
-            model_name = type(model).__name__
-            model_version = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.model_registry.register_model(model_name, model_version, model_path)
+                feature_names = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI',
+                                 'DiabetesPedigreeFunction', 'Age']
+                try:
+                    model_version = self.model_registry.register_model(
+                        model,
+                        model_name,
+                        run_id,
+                        X_train[feature_names].head(),
+                        description=description,
+                        tags=tags
+                    )
 
-            print(f"Model training completed. Metrics: {metrics}")
-            print(f"Model saved and registered: {model_name}, version: {model_version}")
+                    if model_version:
+                        if metrics['accuracy'] > 0.75 and metrics['f1'] > 0.60:
+                            self.model_registry.transition_model_stage(model_name, model_version, "Staging")
 
-            # Add some online features
-            for i in range(10):
-                self.feature_store.add_online_feature(f'online_feature_{i}', {
-                    'value': np.random.rand(),
-                    'timestamp': datetime.datetime.now().isoformat()
-                })
-        # self.data_version_manager.push_to_remote()
+                        print(f"Model training completed. Metrics: {metrics}")
+                        print(f"Model saved and registered: {model_name}, version: {model_version}")
+                    else:
+                        print("Model registration failed. Please check the MLflow server configuration.")
 
-    def predict(self, features: List[float], model_name: str, model_version: str = 'latest'):
-        model = self.model_registry.get_model(model_name, model_version)
+                except Exception as e:
+                    self.logger.error(f"Failed to register model: {str(e)}")
+                    mlflow.log_param("model_registration_error", str(e))
 
-        # Fetch online features
-        online_features = [self.feature_store.get_online_feature(f'online_feature_{i}')['value'] for i in range(10)]
+                print(f"MLflow run ID: {run.info.run_id}")
 
-        # Combine input features with online features
-        # all_features = np.array(features + online_features).reshape(1, -1)
-        all_features = np.array(features + online_features[:self.n_features - len(features)]).reshape(1, -1)
+        except Exception as e:
+            self.logger.error(f"An error occurred during pipeline execution: {str(e)}")
+            mlflow.log_param("error", str(e))
+            raise
 
+    def predict(self, features: Dict[str, float], model_name: str, model_version: str = 'latest'):
+        try:
+            model = self.model_registry.get_model(model_name, model_version)
+        except mlflow.exceptions.MlflowException as e:
+            print(f"Error getting model: {e}")
+            print("Make sure the model is registered and the MLflow server is running.")
+            return None
 
-        return model.predict(all_features)[0]
+        feature_names = ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI',
+                         'DiabetesPedigreeFunction', 'Age']
+        feature_values = [float(features.get(name, 0)) for name in feature_names]
+        input_data = pd.DataFrame([feature_values], columns=feature_names)
+        return model.predict(input_data)[0]
 
-# Usage
-if __name__ == "__main__":
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    data_path = "data/diabetes.csv"
-
-    # Initialize DVC and add initial data
-    # data_version_manager = DataVersionManager(data_path)
-    # data_version_manager.init_dvc()
-    # data_version_manager.add_data_to_dvc()
-    # data_version_manager.create_data_version("v1")
-
-    # Run pipeline with Random Forest
-    rf_pipeline = MLOpsPipeline(data_path, RandomForestFactory(), StandardScalingStrategy())
-    rf_pipeline.run(data_version="v1")
-
-    # Simulate data update
-
-    print("Simulating data update...")
-    full_data_path = os.path.join(project_root, data_path)
-    if os.path.exists(full_data_path):
-        os.utime(full_data_path, None)
-        print(f"Updated timestamp of {full_data_path}")
-    else:
-        print(f"File not found: {full_data_path}")
-    # data_version_manager.add_data_to_dvc()
-    # data_version_manager.create_data_version("v2")
-
-    # Run pipeline with Logistic Regression on updated data
-    lr_pipeline = MLOpsPipeline(data_path, LogisticRegressionFactory(), StandardScalingStrategy())
-    lr_pipeline.run(data_version="v2")
-
-    # Run pipeline with Logistic Regression on updated data
-    lr_pipeline = MLOpsPipeline(data_path, SVMFactory(), StandardScalingStrategy())
-    lr_pipeline.run(data_version="v2")
-
-    # Make a prediction using the latest RandomForest model
-
-    features = [0.5, 0.2, 0.1, 0.7, 0.3, 0.6, 0.8, 0.4]  # Example input features
-    prediction = lr_pipeline.predict(features, model_name='LogisticRegression', model_version='latest')
-
-    print(f"Prediction for sample features: {prediction}")
-
-    print("MLOps pipeline execution completed.")
+#
+# # Usage
+# if __name__ == "__main__":
+#     data_path = "data/diabetes.csv"
+#
+#     # Run pipeline with Random Forest
+#     rf_pipeline = MLOpsPipeline(data_path, RandomForestFactory(), StandardScalingStrategy())
+#     rf_pipeline.run(data_version="v1")
+#
+#     # Simulate data update
+#     print("Simulating data update...")
+#     if os.path.exists(data_path):
+#         os.utime(data_path, None)
+#
+#     # Run pipeline with Logistic Regression on updated data
+#     lr_pipeline = MLOpsPipeline(data_path, LogisticRegressionFactory(), StandardScalingStrategy())
+#     lr_pipeline.run(data_version="v2")
+#
+#     # Run pipeline with SVM on updated data
+#     svm_pipeline = MLOpsPipeline(data_path, SVMFactory(), StandardScalingStrategy())
+#     svm_pipeline.run(data_version="v2")
+#
+#     features = {
+#         'Pregnancies': 6.0,
+#         'Glucose': 148.0,
+#         'BloodPressure': 72.0,
+#         'SkinThickness': 35.0,
+#         'Insulin': 0.0,
+#         'BMI': 33.6,
+#         'DiabetesPedigreeFunction': 0.627,
+#         'Age': 50.0
+#     }
+#     prediction = lr_pipeline.predict(features, model_name='diabetes_LogisticRegressionFactory', model_version='latest')
+#     result = {'prediction': 'Diabetic' if prediction == 1 else 'Non-diabetic'}
+#     print(f"Prediction for sample features: {result['prediction']}")
+#
+#     print("Diabetes prediction pipeline execution completed.")
