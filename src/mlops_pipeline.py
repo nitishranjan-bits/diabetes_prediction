@@ -30,14 +30,14 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 class MLOpsPipeline:
-    def __init__(self, data_path: str, model_factory: ModelFactory,
+    def __init__(self, data_path: str, data_version_manager: DataVersionManager, model_factory: ModelFactory,
                  feature_engineering_strategy: FeatureEngineeringStrategy):
         self.data_path = data_path
         self.model_factory = model_factory
         self.feature_engineering_strategy = feature_engineering_strategy
         self.feature_store = FeatureStore()
         self.model_registry = ModelRegistry()
-        self.data_version_manager = DataVersionManager(data_path)
+        self.data_version_manager = data_version_manager
         self.project_root = PROJECT_ROOT
         self.n_features = None
         self.logger = logging.getLogger(self.__class__.__name__)
