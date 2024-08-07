@@ -1,11 +1,11 @@
 {
   "best_params": {
-    "C": 0.01013559311714475,
+    "C": 0.010291700599696951,
     "kernel": "linear",
-    "gamma": "scale",
+    "gamma": "auto",
     "class_weight": null,
-    "max_iter": 30367,
-    "tol": 0.0048519024535465536
+    "max_iter": 9911,
+    "tol": 0.0001841278322866961
   },
   "best_value": 0.7857142857142857,
   "n_trials": 200
