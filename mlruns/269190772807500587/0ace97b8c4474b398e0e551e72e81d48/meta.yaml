@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/manis/Documents/Nitish/diabetes_prediction/mlflow_artifacts/269190772807500587/0ace97b8c4474b398e0e551e72e81d48/artifacts
+end_time: 1723049632130
+entry_point_name: ''
+experiment_id: '269190772807500587'
+lifecycle_stage: active
+run_id: 0ace97b8c4474b398e0e551e72e81d48
+run_name: bemused-zebra-164
+run_uuid: 0ace97b8c4474b398e0e551e72e81d48
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1723049632100
+status: 3
+tags: []
+user_id: manis
