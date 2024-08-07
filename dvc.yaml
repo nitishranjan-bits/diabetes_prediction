@@ -1,7 +1,0 @@
-stages:
-  prepare_data:
-    cmd: python src/prepare_data.py
-    deps:
-    - src/prepare_data.py
-    outs:
-    - data/diabetes.csv
