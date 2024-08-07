@@ -1,9 +1,12 @@
 {
   "best_params": {
-    "C": 0.0019221133220858897,
-    "penalty": "l1",
-    "solver": "saga"
+    "C": 0.010079796292929766,
+    "kernel": "linear",
+    "gamma": "scale",
+    "class_weight": null,
+    "max_iter": 7618,
+    "tol": 0.0016907564980805487
   },
-  "best_value": 0.54,
+  "best_value": 0.7857142857142857,
   "n_trials": 200
 }

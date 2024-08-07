@@ -1,0 +1,15 @@
+artifact_uri: /home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/Assignment-1/diabetes_prediction/mlflow_artifacts/467305127771631820/9bf88e7693b14c4383c72bcdcc7369c0/artifacts
+end_time: 1723035738335
+entry_point_name: ''
+experiment_id: '467305127771631820'
+lifecycle_stage: active
+run_id: 9bf88e7693b14c4383c72bcdcc7369c0
+run_name: diabetes_RandomForestFactory
+run_uuid: 9bf88e7693b14c4383c72bcdcc7369c0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1723035738250
+status: 4
+tags: []
+user_id: nitish

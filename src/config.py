@@ -1,7 +1,7 @@
 import os
 
 # Get the absolute path of the project root directory
-PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.abspath(os.path.dirname(__file__)), '..'))
 
 # MLflow configuration
 MLFLOW_EXPERIMENT_NAME = "Diabetes Prediction Pipeline"
