@@ -24,7 +24,7 @@ except ImportError:
 
 import logging
 
-from src.model_registry import ModelRegistry
+from model_registry import ModelRegistry
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
