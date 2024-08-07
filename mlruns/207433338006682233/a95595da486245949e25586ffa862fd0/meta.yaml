@@ -1,0 +1,15 @@
+artifact_uri: /home/nitish/Documents/BITS/Semester-3/MLOps/Assignment-1/Assignment-1/diabetes_prediction/mlflow_artifacts/207433338006682233/a95595da486245949e25586ffa862fd0/artifacts
+end_time: 1722948358761
+entry_point_name: ''
+experiment_id: '207433338006682233'
+lifecycle_stage: active
+run_id: a95595da486245949e25586ffa862fd0
+run_name: trusting-swan-906
+run_uuid: a95595da486245949e25586ffa862fd0
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1722948324691
+status: 3
+tags: []
+user_id: nitish

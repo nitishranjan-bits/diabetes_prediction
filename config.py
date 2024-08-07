@@ -20,3 +20,5 @@ os.environ['MLFLOW_REGISTRY_URI'] = MODEL_REGISTRY_URI
 os.environ['MLFLOW_ARTIFACT_URI'] = MLFLOW_ARTIFACT_STORE
 
 GIT_BRANCH = "develop"
+DVC_REMOTE = "origin"
+GIT_REMOTE = "origin"

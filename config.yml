@@ -1,0 +1,4 @@
+project_root: os.path.abspath(os.path.dirname(__file__))
+git_branch: "develop"
+dvc_remote: "origin"
+git_remote: "origin"
