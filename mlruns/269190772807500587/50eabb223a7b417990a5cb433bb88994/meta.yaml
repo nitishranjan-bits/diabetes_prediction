@@ -1,0 +1,15 @@
+artifact_uri: file:///C:/Users/manis/Documents/Nitish/diabetes_prediction/mlflow_artifacts/269190772807500587/50eabb223a7b417990a5cb433bb88994/artifacts
+end_time: 1723050816369
+entry_point_name: ''
+experiment_id: '269190772807500587'
+lifecycle_stage: active
+run_id: 50eabb223a7b417990a5cb433bb88994
+run_name: diabetes_LogisticRegressionFactory
+run_uuid: 50eabb223a7b417990a5cb433bb88994
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1723050813416
+status: 3
+tags: []
+user_id: manis
