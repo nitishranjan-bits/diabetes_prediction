@@ -9,3 +9,5 @@ optuna
 flask
 sqlalchemy
 pyyaml
+pylint
+statistics
